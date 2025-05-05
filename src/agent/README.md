@@ -16,7 +16,7 @@ A comprehensive example showing the capabilities of Pydantic-AI for building a b
 > **Note:** This example is inspired by and adapted from the official [Pydantic-AI documentation](https://ai.pydantic.dev/). It has been selected and expanded upon because it effectively demonstrates the core capabilities of the framework.
 
 ```bash
-python -m src.bank_support
+python -m src.agent.bank_support
 ```
 
 This example demonstrates the core features of Pydantic-AI:
