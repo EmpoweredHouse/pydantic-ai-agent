@@ -99,7 +99,7 @@ brew install uv
 
 ```bash
 # Run the bank support agent example
-python -m src.bank_support
+python -m src.run_agent
 ```
 
 ### Running Evaluation Tests
