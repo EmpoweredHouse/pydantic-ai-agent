@@ -299,7 +299,6 @@ To run the application, use uvicorn with the following command:
 ```bash
 uv run uvicorn src.service.main:app --reload --log-level debug
 ```
-
 This will start the server with:
 - `--reload`: Automatically reload the server when code changes
 - `--log-level debug`: Detailed logging for development

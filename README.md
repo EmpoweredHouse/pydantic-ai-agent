@@ -7,26 +7,17 @@ This repository contains articles and a comprehensive example about building AI 
 This project explores the capabilities of Pydantic-AI for building structured AI agents. It includes:
 
 1. A series of articles on AI, agents, FastAPI, and Streamlit demos
-2. A comprehensive example demonstrating Pydantic-AI in action
+2. A comprehensive example demonstrating Pydantic-AI in action with a FastAPI service
 3. Evaluation tests showing how to ensure agent quality
 4. Project documentation and PRD
 
-## Documentation
-
-Full project documentation is available in the [docs directory](docs/index.md):
-
-- [Product Requirements Document](docs/prd.md)
-- [Technical Architecture](docs/architecture.md)
-- [User Stories](docs/user_stories.md)
-- [Development Roadmap](docs/roadmap.md)
-- [Project Plan](cursor-rules.md)
 
 ## Articles
 
 The following articles are included in this repository:
 
 1. [Understanding Pydantic-AI: A Powerful Tool for Building AI Agents](docs/articles/01-pydantic-ai-introduction.md)
-2. Building AI Agents with FastAPI (coming soon)
+2. [Building an API for Your Pydantic-AI Agent with FastAPI](docs/articles/02-fastapi-agent-api.md)
 3. Creating Interactive AI Demos with Streamlit (coming soon)
 
 ## Example
@@ -35,12 +26,20 @@ This repository features a comprehensive Bank Support Agent example that demonst
 
 > **Note:** This example is inspired by and adapted from the official [Pydantic-AI documentation](https://ai.pydantic.dev/). It was chosen because it effectively demonstrates the framework's core capabilities in a practical context.
 
-- **Structured Outputs**: Using Pydantic models to validate agent responses
+The example includes:
+
+- **Bank Support Agent**: A Pydantic-AI agent that can answer account questions, check balances, and more
+- **FastAPI Service**: A complete API implementation with thread management and message history
+- **Streaming Support**: Both blocking and streaming response patterns for real-time feedback
+- **Database Integration**: SQLAlchemy models for persistent conversation storage
+
+Key features demonstrated include:
+
+- **Structured Outputs**: Using TypedDict for validated, structured agent responses
 - **Dependency Injection**: Providing context and services to the agent
 - **Tool Functions**: Allowing the agent to interact with external systems
 - **Asynchronous Execution**: Non-blocking operations with async/await
-
-See the [example README](src/README.md) for detailed instructions on running the bank support agent example.
+- **Conversation History**: Maintaining context across multiple interactions
 
 ## Getting Started
 
@@ -97,10 +96,23 @@ brew install uv
 
 ### Running the Example
 
+To run the bank support agent in the console:
+
 ```bash
 # Run the bank support agent example
-python -m src.run_agent
+uv run python -m src.run_agent
 ```
+
+To run the FastAPI server:
+
+```bash
+# Start the API server
+uv run uvicorn src.service.main:app --reload --log-level debug
+```
+
+Once the server is running, you can:
+- Access the API documentation at http://localhost:8000/docs
+- Use the API endpoints at http://localhost:8000/api/v1/...
 
 ### Running Evaluation Tests
 
