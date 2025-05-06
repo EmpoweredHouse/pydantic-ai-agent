@@ -6,6 +6,12 @@ import json
 from typing import Optional, AsyncGenerator, List, Sequence
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
+from pydantic_ai.messages import (
+    ModelResponse, ModelMessagesTypeAdapter, 
+    ModelRequest, UserPromptPart, SystemPromptPart, ModelMessage
+)
+
 from src.service.core.utils import ensure_awaited, db_to_api_message, ensure_uuid
 from src.service.db.session import SessionFactory
 from src.service.db.database import (
@@ -13,7 +19,6 @@ from src.service.db.database import (
     get_model_messages_by_thread, 
     create_messages_batch, 
 )
-
 from src.service.models.api.errors import (
     EmptyResponseError,
     AgentTypeError,
@@ -26,15 +31,8 @@ from src.service.models.api import (
     MessageStartedChunk, TextDeltaChunk, MessageCompleteChunk,
     StreamMessageInfo, AgentResponse, 
 )
-from pydantic_ai.messages import (
-    ModelResponse, ModelMessagesTypeAdapter, 
-    ModelRequest, UserPromptPart, SystemPromptPart, ModelMessage
-)
 from src.service.models.database import Message, Thread
-
-# Import all available agents
 from src.agents.bank_support import support_agent
-# Import dependencies for agents
 from src.agents.deps import SupportDependencies, DatabaseConn
 
 async def _prepare_agent_messages(
@@ -359,8 +357,17 @@ async def stream_agent_query(
             deps=agent_deps
         ) as result:
             # Stream tokens as they come with debounce
-            async for chunk in result.stream_structured(debounce_by=0.03):
-                yield TextDeltaChunk(message_id=assistant_message_id, token=chunk)
+            async for message, last in result.stream_structured(debounce_by=0.000001):
+                try:
+                    profile = await result.validate_structured_output(  
+                        message,
+                        allow_partial=not last,
+                    )
+
+                    yield TextDeltaChunk(message_id=assistant_message_id, token=json.dumps(profile))
+                except ValidationError:
+                    continue
+                
 
             # Store all messages at once with explicit transaction
             # Use our utility function to handle possible coroutines

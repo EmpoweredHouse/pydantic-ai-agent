@@ -12,7 +12,7 @@ from src.agents.deps import SupportDependencies
 
 
 # TypedDict for streaming structured output
-class SupportOutput(TypedDict):
+class SupportOutput(TypedDict, total=False):
     """Structured output for the bank support agent.
     
     Fields:
