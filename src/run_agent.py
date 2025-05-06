@@ -34,13 +34,13 @@ async def main() -> None:
             support = result.output
             
             print("--- Agent Response ---")
-            print(f"Support Advice: {support.support_advice}")
-            print(f"Block Card: {'Yes' if support.block_card else 'No'}")
-            print(f"Risk Level: {support.risk_level}/10")
+            print(f"Support Advice: {support['support_advice']}")
+            print(f"Block Card: {'Yes' if support['block_card'] else 'No'}")
+            print(f"Risk Level: {support['risk_level']}/10")
             
-            if support.follow_up_actions:
+            if support['follow_up_actions']:
                 print("\nFollow-up Actions:")
-                for action in support.follow_up_actions:
+                for action in support['follow_up_actions']:
                     print(f"- {action}")
                     
             print("-----------------------")
@@ -61,13 +61,13 @@ async def main() -> None:
             support = result.output
             
             print("\n--- Agent Response ---")
-            print(f"Support Advice: {support.support_advice}")
-            print(f"Block Card: {'Yes' if support.block_card else 'No'}")
-            print(f"Risk Level: {support.risk_level}/10")
+            print(f"Support Advice: {support['support_advice']}")
+            print(f"Block Card: {'Yes' if support['block_card'] else 'No'}")
+            print(f"Risk Level: {support['risk_level']}/10")
             
-            if support.follow_up_actions:
+            if support['follow_up_actions']:
                 print("\nFollow-up Actions:")
-                for action in support.follow_up_actions:
+                for action in support['follow_up_actions']:
                     print(f"- {action}")
                     
             print("-----------------------")

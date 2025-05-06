@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 dependencies = [
     "mypy>=1.15.0",
     "ruff>=0.9.7",
-    "logfire>=3.6.1",
+    "logfire[fastapi]>=3.6.1",
     "pydantic>=2.0.0",
     "pydantic-ai[logfire]>=0.0.43",
     "pydantic-evals[logfire]>=0.0.52",
@@ -20,6 +20,13 @@ dependencies = [
     "pytest-trio>=0.8.0",
     "pytest-twisted>=1.14.3",
     "twisted>=24.11.0",
+    "fastapi>=0.115.12",
+    "sqlalchemy[asyncio,mypy]>=2.0.40",
+    "asyncpg>=0.30.0",
+    "uvicorn>=0.34.2",
+    "aiosqlite>=0.21.0",
+    "opentelemetry-instrumentation-asgi>=0.53b1",
+    "typing-extensions>=4.13.2",
 ]
 
 [tool.mypy]

@@ -2,19 +2,29 @@
 Example demonstrating Pydantic-AI for a bank support agent with dependency injection and tools.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 from pydantic_ai import Agent, RunContext
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Annotated
+
+from typing_extensions import TypedDict, NotRequired
 
 from src.agents.deps import SupportDependencies
 
 
-class SupportOutput(BaseModel):
-    """Structured output for the bank support agent."""
-    support_advice: str = Field(description='Advice returned to the customer')
-    block_card: bool = Field(description="Whether to block the customer's card")
-    risk_level: int = Field(description='Risk level of query', ge=0, le=10)
-    follow_up_actions: List[str] = Field(description='List of follow-up actions to take', default_factory=list)
+# TypedDict for streaming structured output
+class SupportOutput(TypedDict):
+    """Structured output for the bank support agent.
+    
+    Fields:
+        support_advice: Advice returned to the customer
+        block_card: Whether to block the customer's card
+        risk_level: Risk level of query (0-10)
+        follow_up_actions: List of follow-up actions to take
+    """
+    support_advice: Annotated[str, Field(description='Advice returned to the customer')]
+    block_card: Annotated[bool, Field(description="Whether to block the customer's card")]
+    risk_level: Annotated[int, Field(description='Risk level of query', ge=0, le=10)]
+    follow_up_actions: NotRequired[Annotated[List[str], Field(description='List of follow-up actions to take')]]
 
 
 # Create a bank support agent

@@ -11,7 +11,8 @@ from typing import Dict, Any, List
 
 from pydantic_evals import Case, Dataset
 from pydantic_evals.evaluators import Evaluator, LLMJudge
-from src.agents.bank_support import SupportOutput, support_agent, SupportDependencies, DatabaseConn
+from src.agents.bank_support import SupportOutput, support_agent
+from src.agents.deps import SupportDependencies, DatabaseConn
 
 os.environ["LOGFIRE_IGNORE_NO_CONFIG"] = "1"
 
