@@ -163,10 +163,17 @@ def _raw_json_to_content(
             continue
             
         for part in message.parts:
-            if hasattr(part, "part_kind") and part.part_kind != "system-prompt":
-                if hasattr(part, "content") and isinstance(part.content, str):
-                    parts_content.append(part.content)
-    
+            if part.part_kind == "user-prompt":
+                parts_content.append(str(part.content))
+            elif part.part_kind == "tool-call":
+                parts_content.append(str(part.args))
+            elif part.part_kind == "tool-return":
+                parts_content.append(str(part.content))
+            elif part.part_kind == "retry-prompt":
+                parts_content.append(str(part.content))
+            elif part.part_kind == "text":
+                parts_content.append(str(part.content))
+                
     return "\n\n".join(parts_content)
 
 # Add the ensure_uuid utility function

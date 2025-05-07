@@ -148,6 +148,7 @@ async def stream_agent_query(
     except ValueError as e:
         yield ErrorChunk(error="AGENT_ERROR", error_type=str(e))
     except Exception as e:
+        logger.error(f"Unexpected error streaming agent query: {str(e)}", exc_info=True)
         yield ErrorChunk(error="SYSTEM_ERROR", error_type=f"Unexpected error: {str(e)}")
     
     # Send a done event to end the stream properly
