@@ -18,7 +18,7 @@ The following articles are included in this repository:
 
 1. [Understanding Pydantic-AI: A Powerful Tool for Building AI Agents](docs/articles/01-pydantic-ai-introduction.md)
 2. [Building an API for Your Pydantic-AI Agent with FastAPI](docs/articles/02-fastapi-agent-api.md)
-3. Creating Interactive AI Demos with Streamlit (coming soon)
+3. [Building an Interactive Demo for Your Pydantic-AI Agent with Streamlit](docs/articles/03-streamlit-frontend.md)
 
 ## Example
 
@@ -30,6 +30,7 @@ The example includes:
 
 - **Bank Support Agent**: A Pydantic-AI agent that can answer account questions, check balances, and more
 - **FastAPI Service**: A complete API implementation with thread management and message history
+- **Streamlit Frontend**: An interactive chat interface for engaging with the agent
 - **Streaming Support**: Both blocking and streaming response patterns for real-time feedback
 - **Database Integration**: SQLAlchemy models for persistent conversation storage
 
@@ -113,6 +114,15 @@ uv run uvicorn src.service.main:app --reload --log-level debug
 Once the server is running, you can:
 - Access the API documentation at http://localhost:8000/docs
 - Use the API endpoints at http://localhost:8000/api/v1/...
+
+To run the Streamlit frontend (with the API server already running):
+
+```bash
+# Start the Streamlit frontend
+uv run streamlit run streamlit_app.py
+```
+
+The Streamlit app will automatically open in your browser at http://localhost:8501, providing an interactive chat interface for the bank support agent.
 
 ### Running Evaluation Tests
 

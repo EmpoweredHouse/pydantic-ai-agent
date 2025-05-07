@@ -2,23 +2,27 @@
 
 ## Introduction
 
-In the [previous article](01-pydantic-ai-introduction.md), we explored Pydantic-AI as a powerful framework for building AI agents with structured outputs, dependency injection, and built-in evaluation capabilities. We focused on creating a bank support agent that could answer customer questions, check account balances, and block cards when necessary.
+After getting our Pydantic-AI agent working in the console, I faced a familiar challenge: how do I expose this to users? While a command-line interface works for development, real users need something more accessible. This is where FastAPI comes in.
 
-This article shows a concrete example of how to build a FastAPI service around a Pydantic-AI agent. We'll walk through the implementation details, show how conversation history is stored in a database, and demonstrate both blocking and streaming response patterns with real code examples.
+In the [previous article](01-pydantic-ai-introduction.md), we built a bank support agent with structured outputs and dependency injection. Now, we'll take that agent and wrap it in a proper API service that handles conversation history, provides both blocking and streaming endpoints, and follows best practices for production deployment.
+
+What surprised me most about this integration was how naturally Pydantic-AI and FastAPI fit together. Both use Pydantic for validation, both leverage async/await for performance, and both emphasize type safety. It's almost as if they were designed to work together—which makes sense given their shared heritage.
 
 ## Key Ideas
 
-The core ideas behind our API implementation include:
+When designing this API, I wanted to keep a few core principles in mind:
 
-1. **Communication Layer**: Using FastAPI to create a bridge between clients and the Pydantic-AI agent
-2. **Conversation History**: Storing threads and messages in a database to maintain context
-3. **Dual Interfaces**: Supporting both blocking and streaming response patterns
-4. **Simplicity**: Using straightforward approaches to authentication and user identification
-5. **Modularity**: Organizing code in a way that separates concerns and improves maintainability
+1. **Keep It Simple**: Avoid overengineering; focus on a clean, functional API
+2. **Maintain Context**: Store conversation history to provide continuity
+3. **Dual Response Patterns**: Support both blocking and streaming for different client needs
+4. **Pragmatic Authentication**: Use a lightweight approach suitable for internal or microservice architectures
+5. **Modular Design**: Organize code to make maintenance and extension straightforward
+
+Let me walk you through how these principles shaped the implementation.
 
 ## Architecture Overview
 
-We've organized our codebase following a modular approach:
+After some experimentation, I settled on this modular structure for the codebase:
 
 ```
 service/
@@ -30,102 +34,111 @@ service/
 └── middleware/            # HTTP middleware
 ```
 
-This structure enables a clean separation of concerns, where each component has a single responsibility. Rather than diving into the implementation details of each file, let's explore the key architectural patterns.
+This organization provides clear separation of concerns, with each component focused on a specific responsibility. I've found this structure scales well as applications grow—what starts as a simple demo can evolve into a complex service without major restructuring.
 
 ## Simplifying Authentication
 
-Instead of implementing a complex authentication system, we've taken a lightweight approach:
+Authentication is an area where it's easy to overengineer. For this implementation, I chose a pragmatic approach for the sake of simplicity:
 
 1. **API Key Authentication**: A simple middleware checks for a valid API key in request headers, securing the API from unauthorized access.
 
 2. **User Identification via Headers**: Clients provide a user ID in the `X-User-ID` header, delegating user authentication while still allowing thread ownership.
 
-This pragmatic approach works well for internal APIs or microservices architectures where authentication might be handled elsewhere.
+This approach works surprisingly well for internal services, microservices architectures, or systems where authentication is handled by an API gateway. It's one of those "just enough" solutions that avoids unnecessary complexity.
 
 ## Conversation Management
 
-The API organizes conversations into **threads**, which store a series of messages between the user and the agent. This allows us to:
+The core of our API revolves around **threads**—conversations between users and the agent. Each thread contains a series of messages that provide context for the agent's responses.
 
-1. Maintain conversation context over time
-2. Associate messages with specific users
-3. Pass previous messages to the agent for contextual responses
+When I first implemented this, I tried to keep everything in memory for simplicity. But I quickly realized that persistence was essential for a proper conversational experience. Users expect to be able to continue conversations later, reference past interactions, and maintain context over time.
 
-When a query is sent to the agent, we:
-- Validate the thread ID and user ownership
-- Retrieve the thread's message history
-- Send the query and history to the Pydantic-AI agent
-- Store the result back in the database
+The database schema reflects this straightforward model:
+
+```
+Thread
+├── id: UUID
+├── user_id: UUID
+├── agent_type: String
+├── created_at: DateTime
+└── updated_at: DateTime
+
+Message
+├── id: UUID
+├── thread_id: UUID (foreign key to Thread)
+├── role: String (user/assistant/system)
+├── content: String
+├── created_at: DateTime
+└── metadata: JSON
+```
+
+This simple schema handles the core requirements while remaining flexible enough for future extensions.
 
 ## Agent Integration
 
-The integration with Pydantic-AI follows a pattern where we:
+Integrating the Pydantic-AI agent with our API service turned out to be surprisingly straightforward. The key steps are:
 
 1. Load conversation history from the database
-2. Determine the agent type and select the appropriate agent instance
-3. Create agent-specific dependencies
-4. Execute the agent with the query, message history, and dependencies
-5. Process and store the agent's response
+2. Create agent-specific dependencies (like database connections)
+3. Run the agent with the user's query and conversation history
+4. Save the new messages back to the database
+5. Return a structured response to the client
 
-Here's a simplified overview of how we interact with the agent:
-
-```python
-# Get the appropriate agent based on thread type
-agent_type = AgentType(thread.agent_type)
-selected_agent = AGENT_MAP.get(agent_type.value)
-
-# Create agent dependencies
-agent_deps = create_agent_dependencies(thread.user_id, agent_type)
-
-# Run the agent with message history
-agent_result = await selected_agent.run(
-    query, 
-    message_history=list(message_history),
-    deps=agent_deps
-)
-
-# Process and store the response
-new_messages = await agent_result.new_messages()
-result_message = await save_agent_messages(
-    session_factory=session_factory, 
-    thread_id=thread.id, 
-    model_messages=new_messages,
-)
-```
-
-For streaming responses, we use a slightly different approach:
+Here's a simplified version of the integration:
 
 ```python
-# Run the agent in streaming mode
-async with selected_agent.run_stream(
-    query, 
-    message_history=list(message_history),
-    deps=agent_deps
-) as result:
-    # Stream tokens with validation
-    async for message, last in result.stream_structured(debounce_by=0.01):
-        try:
-            profile = await result.validate_structured_output(  
-                message,
-                allow_partial=not last,
-            )
-            # Yield the validated token
-            yield TextDeltaChunk(message_id=message_id, token=json.dumps(profile))
-        except ValidationError:
-            continue
+async def run_agent_query(
+    thread_id: UUID,
+    query: str,
+    session_factory: Callable,
+) -> AgentResponse:
+    """Run an agent query and return the response."""
+    try:
+        # Load thread and validate user access
+        thread = await get_thread_or_404(thread_id, session_factory)
+        
+        # Load message history
+        message_history = await get_message_history(thread_id, session_factory)
+        
+        # Get the appropriate agent
+        agent_type = AgentType(thread.agent_type)
+        selected_agent = AGENT_MAP.get(agent_type.value)
+        
+        # Create agent dependencies
+        agent_deps = create_agent_dependencies(thread.user_id, agent_type)
+        
+        # Run the agent
+        agent_result = await selected_agent.run(
+            query, 
+            message_history=list(message_history),
+            deps=agent_deps
+        )
+        
+        # Save messages to database
+        new_messages = await agent_result.new_messages()
+        result_message = await save_agent_messages(
+            session_factory=session_factory, 
+            thread_id=thread.id, 
+            model_messages=new_messages,
+        )
+        
+        # Return the response
+        return AgentResponse(
+            thread_id=thread_id,
+            message_id=result_message.id,
+            response=result_message.content,
+        )
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        # Log the error
+        logger.exception(f"Error running agent query: {str(e)}")
+        # Raise a 500 error
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error running agent query: {str(e)}",
+        )
 ```
-
-An important implementation detail is that our agent's output uses TypedDict rather than a Pydantic model:
-
-```python
-class SupportOutput(TypedDict, total=False):
-    """Structured output for the bank support agent."""
-    support_advice: Annotated[str, Field(description='Advice returned to the customer')]
-    block_card: Annotated[bool, Field(description="Whether to block the customer's card")]
-    risk_level: Annotated[int, Field(description='Risk level of query', ge=0, le=10)]
-    follow_up_actions: NotRequired[Annotated[List[str], Field(description='List of follow-up actions to take')]]
-```
-
-We use TypedDict for the agent's output specifically to support streaming structured output. Not all types are supported with partial validation in Pydantic, so for model-like structures that need to be built incrementally during streaming, TypedDict is currently the best choice.
 
 ## Data Models
 
@@ -170,30 +183,79 @@ Throughout our implementation, we use various models to ensure type safety and d
 
 Using Pydantic models throughout the codebase provides strong type checking, automatic validation, and self-documenting code. For the API layer, these models ensure that incoming requests are validated and outgoing responses match the expected format.
 
-## Response Patterns
+## The Streaming Challenge
 
-One of the more interesting aspects of our implementation is the support for two different response patterns:
+One of the most interesting challenges I faced was implementing streaming responses. While traditional request-response patterns are straightforward, streaming requires a different approach, especially when working with structured outputs.
 
-### Blocking Responses
+The key insight was to use Pydantic-AI's streaming capabilities while implementing a custom protocol for delivering structured data incrementally. Here's the approach I took:
 
-The `/agent/query` endpoint provides a traditional request-response pattern, where the client waits for the agent to complete its processing before receiving the full response.
+```python
+async def stream_agent_query(
+    thread_id: UUID,
+    query: str,
+    session_factory: Callable,
+) -> AsyncGenerator[AgentResponseChunk, None]:
+    """Stream an agent query and yield response chunks."""
+    try:
+        # Load thread and validate user access
+        thread = await get_thread_or_404(thread_id, session_factory)
+        
+        # User message boilerplate omitted for brevity...
+        
+        # Load message history
+        message_history = await get_message_history(thread_id, session_factory)
+        
+        # Get the appropriate agent
+        agent_type = AgentType(thread.agent_type)
+        selected_agent = AGENT_MAP.get(agent_type.value)
+        
+        # Create agent dependencies
+        agent_deps = create_agent_dependencies(thread.user_id, agent_type)
+        
+        # Signal that the assistant is starting to respond
+        message_id = uuid4()
+        yield MessageStartedChunk(message_id=message_id)
+        
+        # Run the agent in streaming mode
+        async with selected_agent.run_stream(
+            query, 
+            message_history=list(message_history),
+            deps=agent_deps
+        ) as result:
+            # Stream tokens with validation
+            async for message, last in result.stream_structured(debounce_by=0.000001):
+                try:
+                    profile = await result.validate_structured_output(  
+                        message,
+                        allow_partial=not last,
+                    )
+                    # Yield the validated token
+                    yield TextDeltaChunk(message_id=message_id, token=json.dumps(profile))
+                except ValidationError:
+                    # Skip invalid intermediate tokens
+                    continue
+                    
+        # Final handling and database operations omitted for brevity...
+        
+        # Signal that we're done
+        yield DoneChunk()
+        
+    except Exception as e:
+        # Error handling
+        logger.exception(f"Error streaming agent query: {str(e)}")
+        yield ErrorChunk(error=str(e))
+```
 
-### Streaming Responses
+This streaming approach provides several benefits:
 
-The `/agent/stream` endpoint delivers responses incrementally as they're generated, using a streaming response pattern. This provides a more interactive experience, particularly for longer responses.
-
-In our implementation, we've built a structured streaming system that delivers typed events as the agent generates its response:
-
-1. First, we emit a `MessageCreatedChunk` for the user's message
-2. Then, a `MessageStartedChunk` to indicate the agent is generating a response
-3. As the agent generates content, we emit `TextDeltaChunk` events with tokens
-4. Finally, we emit a `MessageCompleteChunk` and `DoneEvent` when generation is complete
-
-This approach allows clients to show real-time feedback while maintaining the structured nature of the agent's response.
+1. **Immediate Feedback**: Users see responses as they're generated
+2. **Better User Experience**: The application feels more responsive
+3. **Graceful Error Handling**: Errors can be communicated mid-stream
+4. **Reduced Time-to-First-Token**: Users don't have to wait for complete responses
 
 ## API Response Examples
 
-To better understand how these endpoints work in practice, let's look at some real examples:
+To give you a clearer picture of how these endpoints work in practice, here are some real examples:
 
 ### Blocking Response Example
 
@@ -248,76 +310,53 @@ The response comes as a series of events:
 
 ```json
 {"event":"message_created","message":{"id":"1bfdd6e2-e187-48f5-86e8-06b93d6ce230","role":"user"}}
-{"event":"message_started","message_id":"a4d03f9f-8375-45e5-9576-4e8deda12cc3"}
-{"event":"token","message_id":"a4d03f9f-8375-45e5-9576-4e8deda12cc3","token":"{}"}
-{"event":"token","message_id":"a4d03f9f-8375-45e5-9576-4e8deda12cc3","token":"{\"support_advice\": \"In\"}"}
-{"event":"token","message_id":"a4d03f9f-8375-45e5-9576-4e8deda12cc3","token":"{\"support_advice\": \"In the realm\"}"}
-// ... more tokens as the response builds up
-{"event":"token","message_id":"a4d03f9f-8375-45e5-9576-4e8deda12cc3","token":"{\"support_advice\": \"In the realm of digital gold,  \\nYour account's story is softly told.  \\n$1123.45, standing bright,  \\nGlistens in the banking light.  \\nA balance steady, come what may,  \\nGuides your journey every day.\", \"block_card\": false, \"risk_level\": 0, \"follow_up_actions\": []}"}
-{"event":"message_complete","message_id":"a4d03f9f-8375-45e5-9576-4e8deda12cc3"}
+{"event":"message_started","message_id":"c4cf4543-d564-459e-bad7-e2e385a7d134"}
+{"event":"text_delta","message_id":"c4cf4543-d564-459e-bad7-e2e385a7d134","token":"{\"support_advice\":\"D\"}"}
+{"event":"text_delta","message_id":"c4cf4543-d564-459e-bad7-e2e385a7d134","token":"{\"support_advice\":\"Digits\"}"}
+{"event":"text_delta","message_id":"c4cf4543-d564-459e-bad7-e2e385a7d134","token":"{\"support_advice\":\"Digits dance\"}"}
+{"event":"text_delta","message_id":"c4cf4543-d564-459e-bad7-e2e385a7d134","token":"{\"support_advice\":\"Digits dance in\"}"}
+{"event":"text_delta","message_id":"c4cf4543-d564-459e-bad7-e2e385a7d134","token":"{\"support_advice\":\"Digits dance in your\"}"}
+// ... more streaming events ...
+{"event":"text_delta","message_id":"c4cf4543-d564-459e-bad7-e2e385a7d134","token":"{\"support_advice\":\"Digits dance in your account,\\nA balance of $1123.45 stands,\\nLike autumn leaves that gently sway,\\nYour money rests, awaits your command.\",\"block_card\":false,\"risk_level\":1,\"follow_up_actions\":[]}"}
+{"event":"message_complete","message_id":"c4cf4543-d564-459e-bad7-e2e385a7d134"}
 {"event":"done"}
 ```
 
-This streaming approach provides immediate feedback to users and better handles long-running requests.
+Notice how the structured response builds up token by token, maintaining the TypedDict format throughout. This allows clients to render the response incrementally while preserving the structured nature of the data.
 
-## Exploring the Code
+## Lessons Learned and Best Practices
 
-We encourage you to explore the codebase to see the complete implementation. Key files to examine include:
+Building this API taught me several valuable lessons:
 
-- `api/agent/endpoints.py` - API endpoints for agent queries
-- `api/agent/operations.py` - Integration with the Pydantic-AI agent
-- `db/database.py` - Database operations
+1. **Keep the Data Model Simple**: Start with the minimum viable schema and extend as needed.
 
-## Running the Application
+2. **Embrace Async**: FastAPI and Pydantic-AI are both built for asynchronous operations, which significantly improve performance, especially for streaming responses.
 
-### Environment Configuration
+3. **Use Dependency Injection**: FastAPI's dependency injection system works beautifully with Pydantic-AI's approach, creating a clean, testable architecture.
 
-The application uses environment variables for configuration. Create a `.env` file in the project root with the following variables:
+4. **Error Handling is Crucial**: AI models can be unpredictable; robust error handling makes your application resilient.
 
-```
-# API configuration
-API_KEY=your_api_key_here
-PROJECT_NAME=Bank Support Agent API
-API_V1_STR=/api/v1
+5. **Type Safety Pays Off**: The investment in proper type annotations catches errors early and improves code maintainability.
 
-# Database configuration
-DATABASE_URL=sqlite:///./data/banking_agent.db
+## What's Next: Building a Frontend
 
-# CORS settings (optional)
-BACKEND_CORS_ORIGINS=["http://localhost:3000", "http://localhost:8000"]
+While our API is now complete, users typically don't interact with raw API endpoints. They need an intuitive interface that hides the complexity and presents information in a user-friendly way.
 
-# LLM configuration
-OPENAI_API_KEY=your_openai_api_key_here
-```
+In the next article, we'll build a Streamlit frontend that consumes our API and provides a chat-like interface for interacting with our bank support agent. Streamlit is a perfect match for this type of application—it's Python-based, focuses on rapid development, and has built-in components specifically designed for chat interfaces.
 
-Adjust these values according to your environment and requirements.
-
-### Starting the Server
-
-To run the application, use uvicorn with the following command:
-
-```bash
-uv run uvicorn src.service.main:app --reload --log-level debug
-```
-This will start the server with:
-- `--reload`: Automatically reload the server when code changes
-- `--log-level debug`: Detailed logging for development
-
-Once running, you can access:
-- API documentation: http://localhost:8000/docs
-- The API endpoints: http://localhost:8000/api/v1/...
+By the end of the next article, we'll have a complete, end-to-end AI agent system with a structured backend and an intuitive frontend, demonstrating how Pydantic-AI, FastAPI, and Streamlit can work together to create powerful AI applications.
 
 ## Conclusion
 
-This FastAPI service provides a clean, modular way to expose a Pydantic-AI agent through an API. It maintains conversation history, supports both blocking and streaming responses, and uses simple authentication patterns.
+Building an API for our Pydantic-AI agent has shown how well these technologies complement each other. The shared focus on type safety, modern Python patterns, and developer experience makes integration feel natural rather than forced.
 
-By focusing on modularity, type safety through Pydantic models, and clean interfaces, the code remains maintainable and extensible. We encourage you to adapt these patterns for your own Pydantic-AI agents, or explore our implementation further.
+What I appreciate most about this approach is how it scales—from simple prototype to production system, the fundamental architecture remains the same. The modular design allows you to start simple and incrementally add complexity as your requirements evolve.
 
-In the next article, we'll build a Streamlit frontend that interacts with this API, providing a user-friendly interface for the bank support agent.
+In the next article, we'll complete our journey by building a Streamlit frontend that brings our agent to life with an intuitive chat interface. Stay tuned!
 
 ## Resources
 
 - [FastAPI Documentation](https://fastapi.tiangolo.com/)
 - [Pydantic-AI Documentation](https://ai.pydantic.dev/)
-- [SQLAlchemy Async Documentation](https://docs.sqlalchemy.org/en/14/orm/extensions/asyncio.html)
-- [Logfire Documentation](https://docs.logfire.dev/) 
+- [SQLAlchemy Documentation](https://docs.sqlalchemy.org/)
+- [GitHub Repository](https://github.com/EmpoweredHouse/pydantic-ai-agent) 
