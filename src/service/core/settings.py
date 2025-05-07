@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     PORT: int = 8080
 
     API_V1_STR: str = "/api/v1"
-    PROJECT_NAME: str = "Pydantic-AI Agent API"
+    PROJECT_NAME: str = "Bank Support Agent"
     
     # Security
     API_BASE_URL: str = Field(default="http://localhost:8000", description="API base URL")
